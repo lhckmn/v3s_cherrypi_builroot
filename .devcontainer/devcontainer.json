@@ -1,0 +1,22 @@
+{
+  "name": "Buildroot devContainer",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceFolder": "/opt/work/workspace",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/opt/work/workspace,type=bind,consistency=cached"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "mhutchie.git-graph",
+		    "plorefice.devicetree"
+      ]
+    },
+    "settings": {
+      "terminal.integrated.shell.linux": "bash"
+    }
+  },
+  "remoteUser": "builduser"
+}

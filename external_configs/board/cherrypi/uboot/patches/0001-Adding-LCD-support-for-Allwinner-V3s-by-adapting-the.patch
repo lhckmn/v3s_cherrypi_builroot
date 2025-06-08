@@ -1,0 +1,202 @@
+From 57f4b67852b9f4b8003850732a4e9d1a2f3ec252 Mon Sep 17 00:00:00 2001
+From: lhckmn <leander.hackmann@gmail.com>
+Date: Sat, 26 Apr 2025 16:06:33 +0000
+Subject: [PATCH] Adding LCD support for Allwinner V3s by adapting the steps of
+ mcerveny.
+
+---
+ arch/arm/include/asm/arch-sunxi/clock_sun6i.h |  5 ++--
+ arch/arm/mach-sunxi/Kconfig                   |  1 +
+ drivers/video/sunxi/lcdc.c                    |  4 +++-
+ drivers/video/sunxi/sunxi_de2.c               | 24 +++++++++++++++++--
+ drivers/video/sunxi/sunxi_lcd.c               |  9 ++++++-
+ include/sunxi_gpio.h                          |  1 +
+ 6 files changed, 38 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/include/asm/arch-sunxi/clock_sun6i.h b/arch/arm/include/asm/arch-sunxi/clock_sun6i.h
+index 7fcf340db69..a9f05fd3ebe 100644
+--- a/arch/arm/include/asm/arch-sunxi/clock_sun6i.h
++++ b/arch/arm/include/asm/arch-sunxi/clock_sun6i.h
+@@ -334,7 +334,7 @@ struct sunxi_ccm_reg {
+ #define AHB_GATE_OFFSET_DE		12
+ #define AHB_GATE_OFFSET_HDMI		11
+ #define AHB_GATE_OFFSET_TVE		9
+-#ifndef CONFIG_SUNXI_DE2
++#if !defined(CONFIG_SUNXI_DE2) || defined(CONFIG_MACH_SUN8I_V3S)
+ #define AHB_GATE_OFFSET_LCD1		5
+ #define AHB_GATE_OFFSET_LCD0		4
+ #else
+@@ -481,7 +481,7 @@ struct sunxi_ccm_reg {
+ #define AHB_RESET_OFFSET_HDMI		11
+ #define AHB_RESET_OFFSET_HDMI2		10
+ #define AHB_RESET_OFFSET_TVE		9
+-#ifndef CONFIG_SUNXI_DE2
++#if !defined(CONFIG_SUNXI_DE2) || defined(CONFIG_MACH_SUN8I_V3S)
+ #define AHB_RESET_OFFSET_LCD1		5
+ #define AHB_RESET_OFFSET_LCD0		4
+ #else
+@@ -523,6 +523,7 @@ struct sunxi_ccm_reg {
+ #define CCM_DE2_CTRL_PLL_MASK		(3 << 24)
+ #define CCM_DE2_CTRL_PLL6_2X		(0 << 24)
+ #define CCM_DE2_CTRL_PLL10		(1 << 24)
++#define CCM_DE2_CTRL_PLL3_V3S		(0 << 24)
+ #define CCM_DE2_CTRL_GATE		(0x1 << 31)
+ 
+ /* CCU security switch, H3 only */
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index ab432390d3c..29a3859a8b8 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -406,6 +406,7 @@ config MACH_SUN8I_V3S
+ 	select CPU_V7_HAS_NONSEC
+ 	select CPU_V7_HAS_VIRT
+ 	select ARCH_SUPPORT_PSCI
++	select SUNXI_DE2
+ 	select SUNXI_GEN_SUN6I
+ 	select SUNXI_DRAM_DW
+ 	select SUNXI_DRAM_DW_16BIT
+diff --git a/drivers/video/sunxi/lcdc.c b/drivers/video/sunxi/lcdc.c
+index 264d775c125..6ddec5392fe 100644
+--- a/drivers/video/sunxi/lcdc.c
++++ b/drivers/video/sunxi/lcdc.c
+@@ -243,7 +243,7 @@ void lcdc_pll_set(struct sunxi_ccm_reg *ccm, int tcon, int dotclock,
+ 	 * not sync to higher frequencies.
+ 	 */
+ 	for (m = min_m; m <= max_m; m++) {
+-#ifndef CONFIG_SUNXI_DE2
++#if !defined(CONFIG_SUNXI_DE2) || defined(CONFIG_MACH_SUN8I_V3S)
+ 		n = (m * dotclock) / step;
+ 
+ 		if ((n >= 9) && (n <= 127)) {
+@@ -262,6 +262,7 @@ void lcdc_pll_set(struct sunxi_ccm_reg *ccm, int tcon, int dotclock,
+ 			continue;
+ #endif
+ 
++#ifndef CONFIG_MACH_SUN8I_V3S
+ 		/* No double clock on DE2 */
+ 		n = (m * dotclock) / (step * 2);
+ 		if ((n >= 9) && (n <= 127)) {
+@@ -274,6 +275,7 @@ void lcdc_pll_set(struct sunxi_ccm_reg *ccm, int tcon, int dotclock,
+ 				best_double = 1;
+ 			}
+ 		}
++#endif
+ 	}
+ 
+ #ifdef CONFIG_MACH_SUN6I
+diff --git a/drivers/video/sunxi/sunxi_de2.c b/drivers/video/sunxi/sunxi_de2.c
+index 154641b9a69..479c930ebc2 100644
+--- a/drivers/video/sunxi/sunxi_de2.c
++++ b/drivers/video/sunxi/sunxi_de2.c
+@@ -23,12 +23,21 @@
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
++#ifdef CONFIG_MACH_SUN8I_V3S
++enum {
++	/* Maximum LCD size we support */
++	LCD_MAX_WIDTH		= 1024,
++	LCD_MAX_HEIGHT		= 1024,
++	LCD_MAX_LOG2_BPP	= VIDEO_BPP32,
++};
++#else
+ enum {
+ 	/* Maximum LCD size we support */
+ 	LCD_MAX_WIDTH		= 3840,
+ 	LCD_MAX_HEIGHT		= 2160,
+ 	LCD_MAX_LOG2_BPP	= VIDEO_BPP32,
+ };
++#endif
+ 
+ static void sunxi_de2_composer_init(void)
+ {
+@@ -44,11 +53,19 @@ static void sunxi_de2_composer_init(void)
+ 	writel(reg_value, SUNXI_SRAMC_BASE + 0x04);
+ #endif
+ 
++#ifdef CONFIG_MACH_SUN8I_V3S
++	clock_set_pll3(50000000);
++	/* pll3 is also used for pixelclock and speed will be recomputed */
++	/* Set DE parent to pll3 */
++	clrsetbits_le32(&ccm->de_clk_cfg, CCM_DE2_CTRL_PLL_MASK,
++			CCM_DE2_CTRL_PLL3_V3S);
++#else
+ 	clock_set_pll10(432000000);
+ 
+ 	/* Set DE parent to pll10 */
+ 	clrsetbits_le32(&ccm->de_clk_cfg, CCM_DE2_CTRL_PLL_MASK,
+ 			CCM_DE2_CTRL_PLL10);
++#endif
+ 
+ 	/* Set ahb gating to pass */
+ 	setbits_le32(&ccm->ahb_reset1_cfg, 1 << AHB_RESET_OFFSET_DE);
+@@ -74,7 +91,8 @@ static void sunxi_de2_mode_set(int mux, const struct display_timing *mode,
+ 	struct de_ui * const de_ui_regs =
+ 		(struct de_ui *)(de_mux_base +
+ 				 SUNXI_DE2_MUX_CHAN_REGS +
+-				 SUNXI_DE2_MUX_CHAN_SZ * 1);
++				 SUNXI_DE2_MUX_CHAN_SZ *
++				 (IS_ENABLED(CONFIG_MACH_SUN8I_V3S) ? 2 : 1));
+ 	struct de_csc * const de_csc_regs =
+ 		(struct de_csc *)(de_mux_base +
+ 				  SUNXI_DE2_MUX_DCSC_REGS);
+@@ -101,7 +119,8 @@ static void sunxi_de2_mode_set(int mux, const struct display_timing *mode,
+ 	for (channel = 0; channel < 4; channel++) {
+ 		void *ch = (void *)(de_mux_base + SUNXI_DE2_MUX_CHAN_REGS +
+ 				    SUNXI_DE2_MUX_CHAN_SZ * channel);
+-		memset(ch, 0, (channel == 0) ?
++		memset(ch, 0, (channel == 0||
++				(IS_ENABLED(CONFIG_MACH_SUN8I_V3S) && channel == 1)) ?
+ 			sizeof(struct de_vi) : sizeof(struct de_ui));
+ 	}
+ 	memset(de_bld_regs, 0, sizeof(struct de_bld));
+@@ -109,6 +128,7 @@ static void sunxi_de2_mode_set(int mux, const struct display_timing *mode,
+ 	writel(0x00000101, &de_bld_regs->fcolor_ctl);
+ 
+ 	writel(1, &de_bld_regs->route);
++	writel(IS_ENABLED(CONFIG_MACH_SUN8I_V3S) ? 2 : 1, &de_bld_regs->route);
+ 
+ 	writel(0, &de_bld_regs->premultiply);
+ 	writel(0xff000000, &de_bld_regs->bkcolor);
+diff --git a/drivers/video/sunxi/sunxi_lcd.c b/drivers/video/sunxi/sunxi_lcd.c
+index 953233fcd68..2bb029a72fe 100644
+--- a/drivers/video/sunxi/sunxi_lcd.c
++++ b/drivers/video/sunxi/sunxi_lcd.c
+@@ -32,6 +32,13 @@ static void sunxi_lcdc_config_pinmux(void)
+ 		sunxi_gpio_set_cfgpin(pin, SUNXI_GPD_LCD0);
+ 		sunxi_gpio_set_drv(pin, 3);
+ 	}
++#elif defined(CONFIG_MACH_SUN8I_V3S)
++	int pin;
++
++	for (pin = SUNXI_GPE(0); pin <= SUNXI_GPE(19); pin++)
++		sunxi_gpio_set_cfgpin(pin, SUN8I_V3S_GPE_LCD0);
++	sunxi_gpio_set_cfgpin(SUNXI_GPE(23), SUN8I_V3S_GPE_LCD0);
++	sunxi_gpio_set_cfgpin(SUNXI_GPE(24), SUN8I_V3S_GPE_LCD0);
+ #endif
+ }
+ 
+@@ -145,7 +152,7 @@ U_BOOT_DRIVER(sunxi_lcd) = {
+ 	.priv_auto	= sizeof(struct sunxi_lcd_priv),
+ };
+ 
+-#ifdef CONFIG_MACH_SUN50I
++#if defined(CONFIG_MACH_SUN50I) || defined(CONFIG_MACH_SUN8I_V3S)
+ U_BOOT_DRVINFO(sunxi_lcd) = {
+ 	.name = "sunxi_lcd"
+ };
+diff --git a/include/sunxi_gpio.h b/include/sunxi_gpio.h
+index 122987c395e..5167dc63403 100644
+--- a/include/sunxi_gpio.h
++++ b/include/sunxi_gpio.h
+@@ -132,6 +132,7 @@ enum sunxi_gpio_number {
+ #define SUNXI_GPD_LVDS0		3
+ 
+ #define SUNIV_GPE_UART0		5
++#define SUN8I_V3S_GPE_LCD0	3
+ 
+ #define SUNXI_GPF_SDC0		2
+ #define SUNXI_GPF_UART0		4
+-- 
+2.39.5
+
