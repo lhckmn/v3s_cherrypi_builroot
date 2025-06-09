@@ -17,8 +17,8 @@ The root-password is set to "root".
 The following features of the board are integrated or to be integrated:
 - [x] LCD support
 - [ ] Wifi (onboard ESP8089) --> Driver of ESP8089 seems to be flaky, discarded for now
-- [x] Wifi using MT7601u via USB
-- [x] SSH via Dropbear
+- [x] Wifi using MT7601u via USB (edit wpa_supplicant.conf under external_configs/board/cherrypi/linux/overlay/etc)
+- [x] SSH and SFTP via OpenSSH (place your key under external_configs/board/cherrypi/linux/overlay/root/.ssh)
 - [ ] On-board audio
 - [ ] Ethernet
 - [ ] Buttons
