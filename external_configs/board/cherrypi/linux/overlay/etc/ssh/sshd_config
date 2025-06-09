@@ -2,3 +2,4 @@ PermitRootLogin yes
 PubkeyAuthentication yes
 PasswordAuthentication yes
 AuthorizedKeysFile .ssh/qtc_id.pub
+Subsystem sftp /usr/libexec/sftp-server
